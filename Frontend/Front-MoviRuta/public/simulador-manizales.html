@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulador Bus Manizales · MoviRuta</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    body { margin: 0; background: #0f172a; color: #e2e8f0; padding: 24px; }
+    .card { max-width: 560px; margin: 0 auto; background: #1e293b; border-radius: 14px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p.sub { margin: 0 0 18px; color: #94a3b8; font-size: 14px; }
+    label { display: block; font-size: 13px; color: #cbd5e1; margin: 14px 0 4px; }
+    input, select, textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 13px; }
+    textarea { resize: vertical; min-height: 64px; font-family: monospace; }
+    .row { display: flex; gap: 10px; }
+    .row > div { flex: 1; }
+    button { margin-top: 18px; width: 100%; padding: 12px; border: 0; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .start { background: #22c55e; color: #052e16; }
+    .stop { background: #ef4444; color: #fff; }
+    .status { margin-top: 16px; padding: 12px; border-radius: 8px; background: #0f172a; font-size: 13px; font-family: monospace; white-space: pre-wrap; max-height: 220px; overflow-y: auto; border: 1px solid #334155; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+    .on { background: #22c55e; } .off { background: #64748b; }
+    .pill { display:inline-block; background:#334155; color:#cbd5e1; font-size:12px; padding:3px 9px; border-radius:999px; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🚌 Simulador de Bus · Manizales</h1>
+    <p class="sub">Recorre la <b>Avenida Santander</b> de Manizales enviando ubicación GPS en
+    tiempo real a ms-chat. Abre el mapa de <b>Seguimiento</b> en otra pestaña para verlo moverse.</p>
+    <span class="pill">📍 Manizales, Caldas · ~5.07, -75.51</span>
+
+    <label>Token JWT del conductor (id distinto al de tu sesión)</label>
+    <textarea id="token">eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJpZCI6IlNJTS1tYW5pemFsZXMtMDEiLCJuYW1lIjoiQnVzIE1hbml6YWxlcyIsImVtYWlsIjoibWFuaXphbGVzQGJ1cy5jb20iLCJyb2xlcyI6WyJjb25kdWN0b3IiXSwiZXhwIjoxNzgyMTg1MTYxfQ.iMX4405LqLphcWJT7XULolW2hCu87vdBWKIUkSZaLEGt2a3YKooEe-6K1eaJPG6EJTIfpVEGmVLE6oa-u-F-oA</textarea>
+
+    <div class="row">
+      <div>
+        <label>Ruta ID (5 = Transversal Manizales)</label>
+        <input id="ruta" type="text" value="5" />
+      </div>
+      <div>
+        <label>Intervalo (segundos)</label>
+        <input id="intervalo" type="number" value="3" min="1" />
+      </div>
+    </div>
+
+    <button id="btn" class="start">Iniciar recorrido</button>
+
+    <div class="status" id="log"><span class="dot off"></span>Desconectado</div>
+  </div>
+
+  <script>
+    // Waypoints reales a lo largo de la Avenida Santander, Manizales
+    // (de El Cable hacia el Centro y de vuelta).
+    const RUTA_MANIZALES = [
+      [5.05600, -75.49200], // El Cable
+      [5.05950, -75.49750],
+      [5.06250, -75.50250],
+      [5.06550, -75.50700], // Fundadores
+      [5.06800, -75.51100],
+      [5.06950, -75.51500],
+      [5.06890, -75.51950], // Centro / Catedral
+      [5.06700, -75.52300], // Plaza de Bolívar
+    ];
+
+    let ws = null, timer = null, n = 0;
+    let segmento = 0, t = 0, sentido = 1; // interpolación entre waypoints, ida y vuelta
+    const $ = (id) => document.getElementById(id);
+    const log = (msg) => { const el = $('log'); el.textContent = msg + '\n' + el.textContent; };
+
+    function wsUrl(token) {
+      try {
+        const id = JSON.parse(atob(token.split('.')[1])).id;
+        const host = location.hostname || 'localhost';
+        return { url: `ws://${host}:4000/ws/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`, id };
+      } catch { return null; }
+    }
+
+    /** Avanza por la polilínea interpolando; rebota al llegar a los extremos. */
+    function siguientePunto() {
+      const a = RUTA_MANIZALES[segmento];
+      const b = RUTA_MANIZALES[segmento + sentido];
+      if (!b) { sentido *= -1; return siguientePunto(); }
+      const lat = a[0] + (b[0] - a[0]) * t;
+      const lng = a[1] + (b[1] - a[1]) * t;
+      t += 0.34; // ~3 pasos por tramo
+      if (t >= 1) {
+        t = 0;
+        segmento += sentido;
+        if (segmento <= 0 || segmento >= RUTA_MANIZALES.length - 1) sentido *= -1;
+      }
+      return { lat, lng };
+    }
+
+    function start() {
+      const token = $('token').value.trim();
+      const info = wsUrl(token);
+      if (!info) { log('❌ Token inválido'); return; }
+      const ruta = $('ruta').value;
+      const intervalo = Math.max(1, parseInt($('intervalo').value)) * 1000;
+      segmento = 0; t = 0; sentido = 1; n = 0;
+
+      ws = new WebSocket(info.url);
+      ws.onopen = () => {
+        $('log').innerHTML = '<span class="dot on"></span>Conectado como ' + info.id;
+        log('✅ WebSocket abierto · recorriendo Av. Santander');
+        timer = setInterval(() => {
+          n++;
+          const { lat, lng } = siguientePunto();
+          ws.send(JSON.stringify({ tipo: 'ubicacion_conductor', data: { lat, lng, ruta_id: ruta } }));
+          log(`📍 #${n}: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        }, intervalo);
+        $('btn').className = 'stop';
+        $('btn').textContent = 'Detener recorrido';
+      };
+      ws.onclose = () => { log('🔌 Cerrado'); stop(true); };
+      ws.onerror = () => log('❌ Error de conexión (¿ms-chat corre en :4000?)');
+    }
+
+    function stop(fromClose) {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (ws && !fromClose) ws.close();
+      ws = null;
+      $('btn').className = 'start';
+      $('btn').textContent = 'Iniciar recorrido';
+      if (!fromClose) $('log').innerHTML = '<span class="dot off"></span>Desconectado';
+    }
+
+    $('btn').onclick = () => (ws ? stop() : start());
+  </script>
+</body>
+</html>

@@ -5,14 +5,13 @@ import os
 from datetime import datetime
 from typing import Dict, List
 
-import httpx
 from bson import ObjectId
 from dotenv import load_dotenv
 from fastapi import WebSocket
 
-load_dotenv()
+from app.auth import decode_token
 
-SECURITY_URL = os.getenv("SECURITY_URL", "http://localhost:5050/api")
+load_dotenv()
 
 
 def _to_serializable(obj):
@@ -32,18 +31,7 @@ class ConnectionManager:
         self.connections: Dict[str, WebSocket] = {}
 
     async def validate_token(self, token: str) -> dict | None:
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{SECURITY_URL}/auth/validate",
-                    headers={"Authorization": f"Bearer {token}"},
-                    timeout=5.0,
-                )
-            if resp.status_code == 200:
-                return resp.json()
-        except Exception:
-            pass
-        return None
+        return decode_token(token)
 
     async def connect(self, usuario_id: str, websocket: WebSocket):
         await websocket.accept()

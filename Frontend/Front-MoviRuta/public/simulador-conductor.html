@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulador Conductor · MoviRuta</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    body { margin: 0; background: #0f172a; color: #e2e8f0; padding: 24px; }
+    .card { max-width: 560px; margin: 0 auto; background: #1e293b; border-radius: 14px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p.sub { margin: 0 0 18px; color: #94a3b8; font-size: 14px; }
+    label { display: block; font-size: 13px; color: #cbd5e1; margin: 14px 0 4px; }
+    input, select, textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 13px; }
+    textarea { resize: vertical; min-height: 64px; font-family: monospace; }
+    .row { display: flex; gap: 10px; }
+    .row > div { flex: 1; }
+    button { margin-top: 18px; width: 100%; padding: 12px; border: 0; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .start { background: #22c55e; color: #052e16; }
+    .stop { background: #ef4444; color: #fff; }
+    .status { margin-top: 16px; padding: 12px; border-radius: 8px; background: #0f172a; font-size: 13px; font-family: monospace; white-space: pre-wrap; max-height: 220px; overflow-y: auto; border: 1px solid #334155; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+    .on { background: #22c55e; } .off { background: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🚌 Simulador de Conductor</h1>
+    <p class="sub">Envía ubicación GPS en tiempo real al microservicio ms-chat (WebSocket).
+    Abre el mapa de <b>Seguimiento</b> en otra pestaña para ver el bus moverse.</p>
+
+    <label>Token JWT del conductor (id distinto al de tu sesión)</label>
+    <textarea id="token">eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJpZCI6IlNJTS1jb25kdWN0b3ItMDEiLCJuYW1lIjoiQ29uZHVjdG9yIFNpbXVsYWRvIiwiZW1haWwiOiJzaW1AYnVzLmNvbSIsInJvbGVzIjpbImNvbmR1Y3RvciJdLCJleHAiOjE3ODIxODQ2ODl9.Cm51PjDrna9bbqktPEnsmR0yVtzxB0XuTOkoaIjIQ4AgvpADkyn6zKJbXmYmFrba-Rm4F_ltA12HcwPCxGRpWw</textarea>
+
+    <div class="row">
+      <div>
+        <label>Latitud inicial</label>
+        <input id="lat" type="number" step="0.0001" value="4.6510" />
+      </div>
+      <div>
+        <label>Longitud inicial</label>
+        <input id="lng" type="number" step="0.0001" value="-74.1000" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Ruta ID</label>
+        <input id="ruta" type="text" value="1" />
+      </div>
+      <div>
+        <label>Intervalo (segundos)</label>
+        <input id="intervalo" type="number" value="3" min="1" />
+      </div>
+    </div>
+
+    <button id="btn" class="start">Iniciar transmisión</button>
+
+    <div class="status" id="log"><span class="dot off"></span>Desconectado</div>
+  </div>
+
+  <script>
+    let ws = null, timer = null, lat = 0, lng = 0, n = 0;
+    const $ = (id) => document.getElementById(id);
+    const log = (msg) => {
+      const el = $('log');
+      el.textContent = msg + '\n' + el.textContent;
+    };
+
+    function wsUrl(token) {
+      try {
+        const id = JSON.parse(atob(token.split('.')[1])).id;
+        // Mismo host que sirve esta página, pero puerto 4000 (ms-chat)
+        const host = location.hostname || 'localhost';
+        return { url: `ws://${host}:4000/ws/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`, id };
+      } catch { return null; }
+    }
+
+    function start() {
+      const token = $('token').value.trim();
+      const info = wsUrl(token);
+      if (!info) { log('❌ Token inválido'); return; }
+
+      lat = parseFloat($('lat').value);
+      lng = parseFloat($('lng').value);
+      const ruta = $('ruta').value;
+      const intervalo = Math.max(1, parseInt($('intervalo').value)) * 1000;
+
+      ws = new WebSocket(info.url);
+      ws.onopen = () => {
+        $('log').innerHTML = '<span class="dot on"></span>Conectado como ' + info.id;
+        log('✅ WebSocket abierto');
+        timer = setInterval(() => {
+          // Movimiento serpenteante para que se vea desplazarse en el mapa
+          n++;
+          lat += 0.0006;
+          lng += Math.sin(n / 3) * 0.0008;
+          const msg = { tipo: 'ubicacion_conductor', data: { lat, lng, ruta_id: ruta } };
+          ws.send(JSON.stringify(msg));
+          log(`📍 Enviado #${n}: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        }, intervalo);
+        $('btn').className = 'stop';
+        $('btn').textContent = 'Detener transmisión';
+      };
+      ws.onclose = () => { log('🔌 Cerrado'); stop(true); };
+      ws.onerror = () => log('❌ Error de conexión (¿ms-chat está corriendo en :4000?)');
+    }
+
+    function stop(fromClose) {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (ws && !fromClose) ws.close();
+      ws = null;
+      $('btn').className = 'start';
+      $('btn').textContent = 'Iniciar transmisión';
+      if (!fromClose) $('log').innerHTML = '<span class="dot off"></span>Desconectado';
+    }
+
+    $('btn').onclick = () => (ws ? stop() : start());
+  </script>
+</body>
+</html>

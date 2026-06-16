@@ -21,6 +21,11 @@ import { catchError, filter, map, switchMap } from 'rxjs/operators';
 import * as L from 'leaflet';
 import { SkeletonLoaderComponent } from '../../../shared/components/loader/loader.component';
 import { ToastService } from '../../../core/services/toast.service';
+import { AuthService } from '../../../core/services/auth.service';
+import {
+  ChatSocketService,
+  UbicacionBus,
+} from '../../../core/services/chat-socket.service';
 import {
   Gps,
   Programacion,
@@ -85,12 +90,21 @@ export class SeguimientoComponent implements OnInit, OnDestroy {
   private retrasoAlertados = new Set<number>();
   private busDatos: BusDato[] = [];
 
+  // Buses en vivo recibidos por WebSocket (ms-chat), indexados por conductor_id.
+  private markersLive = new Map<string, L.Marker>();
+  // Última ubicación conocida de cada conductor (para re-pintar al cambiar de ruta).
+  private ultimasUbicaciones = new Map<string, UbicacionBus>();
+  private centradoEnVivo = false;
+  busesEnVivo = 0;
+
   private rutaSubject = new BehaviorSubject<number | null>(null);
 
   constructor(
     private svc: SeguimientoService,
     private toast: ToastService,
-    private zone: NgZone
+    private zone: NgZone,
+    private chatSocket: ChatSocketService,
+    private auth: AuthService
   ) {
     this.rutaSubject
       .pipe(
@@ -103,6 +117,9 @@ export class SeguimientoComponent implements OnInit, OnDestroy {
           this.miParaderoNombre = null;
           this.retrasoAlertados.clear();
           this.limpiarMarcadores();
+          // Re-pinta los buses en vivo que pertenezcan a la nueva ruta.
+          this.centradoEnVivo = false;
+          this.reRenderBusesEnVivo();
 
           return this.svc.getParaderosDeRuta(rutaId).pipe(
             switchMap(paraderos => {
@@ -147,11 +164,95 @@ export class SeguimientoComponent implements OnInit, OnDestroy {
         this.errorCarga = 'No se pudieron cargar las rutas disponibles.';
       },
     });
+
+    // Buses en tiempo real vía ms-chat (WebSocket): cada "ubicacion_bus" mueve un marcador.
+    const token = this.auth.getToken();
+    if (token) {
+      this.chatSocket.connect(token);
+      this.chatSocket.ubicaciones$
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(u => this.actualizarBusEnVivo(u));
+    }
   }
 
   ngOnDestroy(): void {
+    this.chatSocket.disconnect();
     this.mapa?.remove();
     this.mapa = null;
+  }
+
+  /** True si la ubicación pertenece a la ruta actualmente seleccionada. */
+  private perteneceARutaSeleccionada(u: UbicacionBus): boolean {
+    if (this.rutaSeleccionada == null) return false;
+    return String(this.rutaSeleccionada) === String(u.ruta_id ?? '');
+  }
+
+  /** Llega una ubicación nueva por WebSocket: la guarda y la pinta si es de la ruta activa. */
+  private actualizarBusEnVivo(u: UbicacionBus): void {
+    this.ultimasUbicaciones.set(u.conductor_id, u);
+    this.pintarBusEnVivo(u);
+  }
+
+  /** Crea/mueve (o quita) el marcador verde según la ruta seleccionada. */
+  private pintarBusEnVivo(u: UbicacionBus): void {
+    this.zone.runOutsideAngular(() => {
+      if (!this.mapa) return;
+
+      // Si el bus no es de la ruta seleccionada, retíralo del mapa si estaba.
+      if (!this.perteneceARutaSeleccionada(u)) {
+        const m = this.markersLive.get(u.conductor_id);
+        if (m) {
+          m.remove();
+          this.markersLive.delete(u.conductor_id);
+          this.zone.run(() => (this.busesEnVivo = this.markersLive.size));
+        }
+        return;
+      }
+
+      const popupHtml = `
+        <div style="min-width:160px">
+          <b style="color:#2e7d32">🟢 Bus en vivo</b><br>
+          <span style="font-size:12px;color:#666">Conductor: ${u.conductor_id}</span><br>
+          ${u.ruta_id ? `<span style="font-size:12px;color:#666">Ruta: ${u.ruta_id}</span><br>` : ''}
+          <small style="color:#888">${new Date(u.timestamp).toLocaleTimeString('es-CO')}</small>
+        </div>`;
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="bus-map-marker bus-en-vivo"><span class="material-icons">directions_bus</span></div>`,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+        popupAnchor: [0, -20],
+      });
+
+      const existente = this.markersLive.get(u.conductor_id);
+      if (existente) {
+        existente.setLatLng([u.lat, u.lng]);
+        existente.setPopupContent(popupHtml);
+      } else {
+        const marker = L.marker([u.lat, u.lng], { icon })
+          .addTo(this.mapa!)
+          .bindPopup(popupHtml);
+        this.markersLive.set(u.conductor_id, marker);
+        this.zone.run(() => (this.busesEnVivo = this.markersLive.size));
+      }
+
+      // Centra el mapa en el primer bus en vivo de la ruta (puede estar en otra ciudad).
+      if (!this.centradoEnVivo) {
+        this.centradoEnVivo = true;
+        this.mapa!.setView([u.lat, u.lng], 14);
+      }
+    });
+  }
+
+  /** Al cambiar de ruta: limpia los marcadores en vivo y re-pinta los de la nueva ruta. */
+  private reRenderBusesEnVivo(): void {
+    this.zone.runOutsideAngular(() => {
+      this.markersLive.forEach(m => m.remove());
+      this.markersLive.clear();
+    });
+    this.busesEnVivo = 0;
+    this.ultimasUbicaciones.forEach(u => this.pintarBusEnVivo(u));
   }
 
   @ViewChild('mapaEl') set mapaEl(el: ElementRef<HTMLDivElement>) {

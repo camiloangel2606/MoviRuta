@@ -50,6 +50,11 @@
         <span>Mi paradero: <b>{{ miParaderoNombre }}</b></span>
       </div>
 
+      <div class="stat-chip" style="background:#e8f5e9;color:#2e7d32" *ngIf="busesEnVivo > 0">
+        <mat-icon>sensors</mat-icon>
+        <span>{{ busesEnVivo }} en vivo (tiempo real)</span>
+      </div>
+
       <div class="stat-chip warn" *ngIf="busesActivos.length === 0">
         <mat-icon>info</mat-icon>
         <span>Sin buses en servicio en este momento</span>

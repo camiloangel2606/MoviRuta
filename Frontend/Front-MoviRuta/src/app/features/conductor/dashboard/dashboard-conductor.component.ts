@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { AuthService } from '../../../core/services/auth.service';
+import { ChatSocketService } from '../../../core/services/chat-socket.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state.component';
 import { SkeletonLoaderComponent } from '../../../shared/components/loader/loader.component';
@@ -49,6 +50,8 @@ export class DashboardConductorComponent implements OnInit, OnDestroy {
   gpsError: string | null = null;
   posicionActual: { lat: number; lng: number } | null = null;
   private watchId: number | null = null;
+  /** Última vez (ms) que se emitió la ubicación por WebSocket — throttle de 5s. */
+  private ultimoEnvioWs = 0;
 
   private subs: Subscription[] = [];
 
@@ -57,6 +60,7 @@ export class DashboardConductorComponent implements OnInit, OnDestroy {
     private turnoService: TurnoService,
     private dialog: MatDialog,
     private toast: ToastService,
+    private chatSocket: ChatSocketService,
   ) {}
 
   ngOnInit(): void {
@@ -290,18 +294,56 @@ export class DashboardConductorComponent implements OnInit, OnDestroy {
 
   /** Actualiza el estado de la programacion asociada en el backend y en local */
   private sincronizarEstadoProgramacion(estado: 'EN_CURSO' | 'FINALIZADO'): void {
-    if (!this.programacionId) return;
-
-    const sub = this.turnoService.actualizarEstadoProgramacion(this.programacionId, estado)
-      .subscribe({
+    const aplicar = (progId: number) => {
+      const sub = this.turnoService.actualizarEstadoProgramacion(progId, estado).subscribe({
         next: () => {
+          this.programacionId = progId;
           if (this.programacion) {
             this.programacion$.next({ ...this.programacion, estado } as Programacion);
           }
         },
         error: () => {
-          // No bloquear al conductor si falla — el turno ya fue actualizado
+          if (estado === 'FINALIZADO') {
+            this.toast.warning(
+              'El turno se finalizó, pero no se pudo actualizar la programación.',
+            );
+          }
         },
+      });
+      this.subs.push(sub);
+    };
+
+    if (this.programacionId) {
+      aplicar(this.programacionId);
+      return;
+    }
+
+    // programacionId puede ser null si el turno persiste de otro día y la programación
+    // no era la de "hoy". La resolvemos por bus + conductor (ignorando finalizadas).
+    const busId = Number(this.turno?.bus?.id);
+    const sub = this.turnoService
+      .getProgramaciones()
+      .pipe(
+        map(
+          progs =>
+            progs.find(
+              p =>
+                Number(p.bus?.id) === busId &&
+                (this.conductorId == null ||
+                  Number((p.conductorAsignado as any)?.id) === this.conductorId) &&
+                p.estado !== 'FINALIZADO' &&
+                p.estado !== 'CANCELADO',
+            )?.id ?? null,
+        ),
+      )
+      .subscribe(progId => {
+        if (progId) {
+          aplicar(progId);
+        } else if (estado === 'FINALIZADO') {
+          this.toast.warning(
+            'El turno se finalizó, pero no se encontró la programación asociada.',
+          );
+        }
       });
     this.subs.push(sub);
   }
@@ -437,15 +479,29 @@ export class DashboardConductorComponent implements OnInit, OnDestroy {
   }
 
   private iniciarWatchPosition(): void {
+    // Conexión WebSocket a ms-chat para transmitir la ubicación en tiempo real.
+    const token = this.authService.getToken();
+    if (token) this.chatSocket.connect(token);
+
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         this.posicionActual = { lat, lng };
         this.gpsActivo = true;
+
+        // 1) Persistencia REST en el backend de negocio (histórico GPS).
         if (this.gps) {
           const sub = this.turnoService.actualizarPosicion(this.gps.id, lat, lng).subscribe();
           this.subs.push(sub);
+        }
+
+        // 2) Broadcast en tiempo real vía ms-chat (throttle de 5s).
+        const ahora = Date.now();
+        if (ahora - this.ultimoEnvioWs >= 5000) {
+          this.ultimoEnvioWs = ahora;
+          const rutaId = (this.programacion as any)?.ruta?.id ?? null;
+          this.chatSocket.enviarUbicacion(lat, lng, rutaId);
         }
       },
       () => {
@@ -461,6 +517,7 @@ export class DashboardConductorComponent implements OnInit, OnDestroy {
       navigator.geolocation.clearWatch(this.watchId);
       this.watchId = null;
     }
+    this.chatSocket.disconnect();
     this.gpsActivo = false;
     this.posicionActual = null;
   }

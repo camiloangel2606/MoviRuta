@@ -82,9 +82,25 @@ async def mensajes_recibidos(
     user=Depends(get_current_user),
 ):
     db = get_db()
-    filtro: dict = {"destinatario_id": user["id"]}
-    if tipo:
-        filtro["tipo"] = tipo
+
+    # Grupos donde el usuario es miembro activo
+    membresias = await db.grupo_personas.find(
+        {"persona_id": user["id"], "bloqueado": False}, {"grupo_id": 1}
+    ).to_list(None)
+    grupo_ids = [m["grupo_id"] for m in membresias]
+
+    # Mensajes directos al usuario O mensajes de grupos donde es miembro
+    filtro: dict = {
+        "$or": [
+            {"tipo": "directo", "destinatario_id": user["id"]},
+            {"tipo": "grupo", "grupo_id": {"$in": grupo_ids}},
+        ]
+    }
+    if tipo == "directo":
+        filtro = {"tipo": "directo", "destinatario_id": user["id"]}
+    elif tipo == "grupo":
+        filtro = {"tipo": "grupo", "grupo_id": {"$in": grupo_ids}}
+
     if leido is not None:
         filtro["leido"] = leido
     if fecha_desde or fecha_hasta:
@@ -94,6 +110,7 @@ async def mensajes_recibidos(
         if fecha_hasta:
             rango["$lte"] = fecha_hasta
         filtro["fecha_envio"] = rango
+
     docs = await db.mensajes.find(filtro).sort("fecha_envio", -1).to_list(200)
     return [_serialize(d) for d in docs]
 
@@ -112,12 +129,27 @@ async def marcar_leido(id: str, user=Depends(get_current_user)):
         oid = ObjectId(id)
     except Exception:
         raise HTTPException(status_code=400, detail="ID inválido")
-    result = await db.mensajes.update_one(
-        {"_id": oid, "destinatario_id": user["id"]},
+
+    msg = await db.mensajes.find_one({"_id": oid})
+    if not msg:
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+
+    # Mensaje directo: solo el destinatario puede marcarlo
+    if msg["tipo"] == "directo":
+        if msg.get("destinatario_id") != user["id"]:
+            raise HTTPException(status_code=403, detail="Sin permiso")
+    # Mensaje de grupo: solo miembros activos del grupo pueden marcarlo
+    elif msg["tipo"] == "grupo":
+        miembro = await db.grupo_personas.find_one(
+            {"grupo_id": msg["grupo_id"], "persona_id": user["id"], "bloqueado": False}
+        )
+        if not miembro:
+            raise HTTPException(status_code=403, detail="No eres miembro de este grupo")
+
+    await db.mensajes.update_one(
+        {"_id": oid},
         {"$set": {"leido": True, "leido_en": _now()}},
     )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
     return {"ok": True}
 
 
@@ -167,7 +199,29 @@ async def crear_alerta(body: AlertaCreate, user=Depends(get_current_user)):
     alerta.pop("_id", None)
     if body.alcance == "todos":
         await manager.broadcast({"tipo": "alerta_masiva", "data": alerta})
+    elif body.alcance in ("ruta", "zona"):
+        # Broadcast igualmente — el cliente filtra si le corresponde por ruta/zona
+        await manager.broadcast({"tipo": "alerta_masiva", "data": alerta})
     return alerta
+
+
+@router.get("/ubicaciones/{conductor_id}")
+async def ubicacion_conductor(conductor_id: str, user=Depends(get_current_user)):
+    db = get_db()
+    doc = await db.ubicaciones_conductor.find_one({"conductor_id": conductor_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Sin ubicación registrada")
+    doc.pop("_id", None)
+    return doc
+
+
+@router.get("/ubicaciones")
+async def ubicaciones_activas(user=Depends(get_current_user)):
+    db = get_db()
+    docs = await db.ubicaciones_conductor.find({}).to_list(None)
+    for d in docs:
+        d.pop("_id", None)
+    return docs
 
 
 @router.get("/alertas/{id}/estadisticas")

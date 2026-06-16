@@ -21,6 +21,11 @@ async def websocket_endpoint(
         await websocket.close(code=4001)
         return
 
+    # El usuario_id del path debe coincidir con el token
+    if str(user.get("id", "")) != usuario_id:
+        await websocket.close(code=4003)
+        return
+
     await manager.connect(usuario_id, websocket)
     db = get_db()
 
@@ -91,6 +96,28 @@ async def websocket_endpoint(
                     {"tipo": "mensaje_grupo", "data": msg},
                     excluir_ids=[usuario_id],
                 )
+
+            elif tipo == "ubicacion_conductor":
+                # El conductor envía su GPS desde "mi turno" cada 5-15 segundos.
+                # Se persiste la última ubicación y se hace broadcast a todos.
+                lat = payload.get("lat")
+                lng = payload.get("lng")
+                ruta_id = payload.get("ruta_id")
+                if lat is None or lng is None:
+                    continue
+                ubicacion_doc = {
+                    "conductor_id": usuario_id,
+                    "ruta_id": ruta_id,
+                    "lat": lat,
+                    "lng": lng,
+                    "timestamp": now,
+                }
+                await db.ubicaciones_conductor.replace_one(
+                    {"conductor_id": usuario_id},
+                    ubicacion_doc,
+                    upsert=True,
+                )
+                await manager.broadcast({"tipo": "ubicacion_bus", "data": ubicacion_doc})
 
     except WebSocketDisconnect:
         manager.disconnect(usuario_id)

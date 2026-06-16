@@ -271,6 +271,22 @@
       background: #d32f2f;
       animation: pulse-retraso 1.2s ease-in-out infinite;
     }
+
+    // Bus transmitido en tiempo real vía ms-chat (WebSocket)
+    &.bus-en-vivo {
+      background: #2e7d32;
+      animation: pulse-vivo 1.4s ease-in-out infinite;
+    }
+  }
+
+  @keyframes pulse-vivo {
+    0%,
+    100% {
+      box-shadow: 0 2px 6px rgba(46, 125, 50, 0.35);
+    }
+    50% {
+      box-shadow: 0 2px 16px rgba(46, 125, 50, 0.8);
+    }
   }
 
   @keyframes pulse-retraso {

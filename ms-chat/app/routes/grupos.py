@@ -55,7 +55,11 @@ async def mis_grupos(user=Depends(get_current_user)):
         try:
             g = await db.grupos.find_one({"_id": ObjectId(m["grupo_id"])})
             if g:
-                result.append(_serialize(g))
+                g = _serialize(g)
+                g["cantidad_miembros"] = await db.grupo_personas.count_documents(
+                    {"grupo_id": g["id"], "bloqueado": False}
+                )
+                result.append(g)
         except Exception:
             continue
     return result
