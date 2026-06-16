@@ -1,0 +1,285 @@
+.seguimiento-container {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+// ── Skeleton header ──────────────────────────────────────────
+.skeleton-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+// ── Cabecera ─────────────────────────────────────────────────
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+
+  .header-text {
+    h1 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 4px;
+      font-size: 1.4rem;
+      font-weight: 600;
+
+      mat-icon {
+        color: #1976d2;
+      }
+    }
+
+    p {
+      margin: 0;
+      font-size: 14px;
+      color: #666;
+    }
+  }
+
+  .ruta-select {
+    min-width: 280px;
+    max-width: 360px;
+  }
+}
+
+// ── Error ─────────────────────────────────────────────────────
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #ffebee;
+  color: #c62828;
+  border-radius: 8px;
+  font-size: 14px;
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// ── Barra de info ─────────────────────────────────────────────
+.info-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+
+  &.primary {
+    background: rgba(25, 118, 210, 0.1);
+    color: #1565c0;
+  }
+
+  &.accent {
+    background: rgba(245, 124, 0, 0.1);
+    color: #e65100;
+  }
+
+  &.warn {
+    background: rgba(158, 158, 158, 0.15);
+    color: #616161;
+  }
+}
+
+.mapa-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #888;
+  margin-left: auto;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+}
+
+// ── Mapa ──────────────────────────────────────────────────────
+.mapa-wrapper {
+  position: relative;
+  height: 520px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.mapa {
+  width: 100%;
+  height: 100%;
+}
+
+.mapa-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.88);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+
+  &.loading {
+    background: rgba(255, 255, 255, 0.75);
+  }
+
+  .overlay-icon {
+    font-size: 56px;
+    width: 56px;
+    height: 56px;
+    color: #bdbdbd;
+  }
+
+  .overlay-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #424242;
+  }
+
+  .overlay-sub {
+    margin: 0;
+    font-size: 13px;
+    color: #757575;
+    text-align: center;
+    max-width: 280px;
+  }
+}
+
+// ── Leyenda ───────────────────────────────────────────────────
+.leyenda {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #666;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+}
+
+.leyenda-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  display: inline-block;
+
+  &.azul {
+    background: #1976d2;
+  }
+
+  &.naranja {
+    background: #f57c00;
+  }
+}
+
+.bus-icon-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: #1565c0;
+  border-radius: 50%;
+  border: 1.5px solid white;
+  color: white;
+
+  mat-icon {
+    font-size: 13px;
+    width: 13px;
+    height: 13px;
+  }
+
+  &.warn {
+    background: #d32f2f;
+  }
+}
+
+.leyenda-refresh {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: #9e9e9e;
+  font-size: 11px;
+
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+  }
+}
+
+// ── Marcadores de bus (Leaflet divIcon, fuera de encapsulación) ─
+:host ::ng-deep {
+  .bus-map-marker {
+    width: 36px;
+    height: 36px;
+    background: #1565c0;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+
+    .material-icons {
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    &.bus-retrasado {
+      background: #d32f2f;
+      animation: pulse-retraso 1.2s ease-in-out infinite;
+    }
+  }
+
+  @keyframes pulse-retraso {
+    0%,
+    100% {
+      box-shadow: 0 2px 6px rgba(211, 47, 47, 0.3);
+    }
+    50% {
+      box-shadow: 0 2px 14px rgba(211, 47, 47, 0.75);
+    }
+  }
+}

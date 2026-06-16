@@ -1,0 +1,11 @@
+node_modules/
+target/
+dist/
+*.log
+*.class
+.DS_Store
+
+# Variables de entorno (contienen credenciales)
+.env
+.env.*
+!.env.example

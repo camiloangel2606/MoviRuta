@@ -1,0 +1,106 @@
+<div class="seguimiento-container">
+
+  <!-- ── Skeleton mientras se cargan las rutas ── -->
+  <ng-container *ngIf="isLoading">
+    <div class="skeleton-header">
+      <app-skeleton type="text" width="320px" height="36px"></app-skeleton>
+      <app-skeleton type="stat" width="280px" height="52px"></app-skeleton>
+    </div>
+    <app-skeleton type="card" width="100%" height="520px"></app-skeleton>
+  </ng-container>
+
+  <!-- ── Contenido principal ── -->
+  <ng-container *ngIf="!isLoading">
+
+    <!-- Header -->
+    <div class="page-header">
+      <div class="header-text">
+        <h1><mat-icon>gps_fixed</mat-icon> Seguimiento en tiempo real</h1>
+        <p>Ubica los buses activos de tu ruta y conoce cuándo llegan a tu paradero</p>
+      </div>
+
+      <mat-form-field appearance="outline" class="ruta-select">
+        <mat-label>Selecciona una ruta</mat-label>
+        <mat-select
+          [(ngModel)]="rutaSeleccionada"
+          (selectionChange)="onRutaChange($event.value)">
+          <mat-option *ngFor="let ruta of rutas" [value]="ruta.id">
+            {{ ruta.nombre }}
+          </mat-option>
+        </mat-select>
+        <mat-icon matSuffix>route</mat-icon>
+      </mat-form-field>
+    </div>
+
+    <!-- Error global -->
+    <div class="error-banner" *ngIf="errorCarga">
+      <mat-icon>error_outline</mat-icon>
+      {{ errorCarga }}
+    </div>
+
+    <!-- Barra de info (visible cuando hay ruta seleccionada y datos listos) -->
+    <div class="info-bar" *ngIf="rutaSeleccionada && !isCargandoMapa && !errorCarga">
+      <div class="stat-chip primary">
+        <mat-icon>directions_bus</mat-icon>
+        <span>{{ busesActivos.length }} {{ busesActivos.length === 1 ? 'bus activo' : 'buses activos' }}</span>
+      </div>
+
+      <div class="stat-chip accent" *ngIf="miParaderoNombre">
+        <mat-icon>place</mat-icon>
+        <span>Mi paradero: <b>{{ miParaderoNombre }}</b></span>
+      </div>
+
+      <div class="stat-chip warn" *ngIf="busesActivos.length === 0">
+        <mat-icon>info</mat-icon>
+        <span>Sin buses en servicio en este momento</span>
+      </div>
+
+      <span class="mapa-hint">
+        <mat-icon>touch_app</mat-icon>
+        Toca un paradero azul para seleccionarlo y ver tiempos estimados
+      </span>
+    </div>
+
+    <!-- Mapa Leaflet -->
+    <div class="mapa-wrapper">
+      <div #mapaEl class="mapa"></div>
+
+      <!-- Overlay: sin ruta seleccionada -->
+      <div class="mapa-overlay" *ngIf="!rutaSeleccionada && !isCargandoMapa">
+        <mat-icon class="overlay-icon">route</mat-icon>
+        <p class="overlay-title">Selecciona una ruta</p>
+        <p class="overlay-sub">Elige una ruta en el selector de arriba para ver los buses en tiempo real</p>
+      </div>
+
+      <!-- Overlay: cargando datos de ruta -->
+      <div class="mapa-overlay loading" *ngIf="isCargandoMapa">
+        <mat-spinner [diameter]="48"></mat-spinner>
+        <p class="overlay-title">Cargando ruta...</p>
+      </div>
+    </div>
+
+    <!-- Leyenda -->
+    <div class="leyenda" *ngIf="rutaSeleccionada && !isCargandoMapa">
+      <div class="leyenda-item">
+        <span class="dot azul"></span> Paradero de la ruta
+      </div>
+      <div class="leyenda-item">
+        <span class="dot naranja"></span> Tu paradero seleccionado
+      </div>
+      <div class="leyenda-item">
+        <span class="bus-icon-mini">
+          <mat-icon>directions_bus</mat-icon>
+        </span> Bus activo (toca para ver detalles)
+      </div>
+      <div class="leyenda-item">
+        <span class="bus-icon-mini warn">
+          <mat-icon>directions_bus</mat-icon>
+        </span> Bus con posible retraso
+      </div>
+      <div class="leyenda-refresh">
+        <mat-icon>refresh</mat-icon> Actualización automática cada 10 s
+      </div>
+    </div>
+
+  </ng-container>
+</div>

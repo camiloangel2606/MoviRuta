@@ -1,0 +1,19 @@
+INSTRUCCIONES PARA EXPORTAR LA BASE DE DATOS MySQL
+====================================================
+
+Pon aqui el archivo SQL exportado desde MySQL Workbench.
+El contenedor MySQL lo ejecutara automaticamente al iniciarse por primera vez.
+
+PASOS EN MYSQL WORKBENCH:
+1. Abrir MySQL Workbench
+2. Menu: Server > Data Export
+3. Seleccionar la base de datos "moviruta_entrega2"
+4. Marcar "Export to Self-Contained File"
+5. Activar las opciones:
+   - Include Create Schema
+   - Include Drop Table
+6. Hacer click en "Start Export"
+7. Guardar el archivo como: init-sql/dump.sql
+
+IMPORTANTE: El archivo DEBE llamarse dump.sql (o cualquier nombre .sql)
+y quedar dentro de esta carpeta init-sql/
